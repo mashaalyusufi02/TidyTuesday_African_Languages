@@ -1,0 +1,192 @@
+---
+title: "Tidy_Tuesday_Analysis"
+output: html_document
+---
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE,include=FALSE}
+
+
+packages_list <- c("tidyr","stringr","dplyr","readr","purrr","readxl","geofacet","tmap",
+                      "ggtext","hrbrthemes","extrafont","skimr","rvest","hrbrthemes","spData","terra","sf")
+new_packages <- packages_list[!(packages_list %in% installed.packages()[,"Package"])]
+if(length(new_packages)) install.packages(new_packages,repos = "http://cran.us.r-project.org" )
+
+lapply(packages_list, require, character.only = TRUE, warn.conflicts = FALSE,quietly=TRUE)
+```
+
+
+```{r,warning=FALSE,message=FALSE}
+library(tidyr)
+library(stringr)
+library(dplyr)
+library(purrr)
+library(rvest)
+library(readr)
+library(geofacet)
+library(ggtext)
+library(extrafont)
+library(skimr)
+library(spData)
+library(terra)
+library(sf)
+library(ggplot2)
+library(tmap)
+library(leaflet)
+africa <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2026/2026-01-13/africa.csv')
+
+## Download Africa dataset for Readers own analysis
+write.csv(africa, "africa.csv")
+```
+
+
+### Missing values check per column in the Africa dataset
+
+Check if there are any missing values in any of the columns. The chunk below should print 0 for each column if there are no missing values.
+```{r,warning=FALSE,message=FALSE}
+for (col_index in (1:length(africa))){
+  print(sum(is.na(africa[,col_index])))
+}
+```
+The African continent consists of 51 countries, 504 languages, and 17 language families.
+
+```{r}
+for (col_index in (1:length(africa))){
+  cat("The column",colnames(africa)[col_index],"has" ,nrow(unique(africa[,col_index])),"unique rows.","\n")
+}
+
+```
+
+### Descriptive Statistics for the Africa dataset
+
+Basic Questions:
+Which country in Africa has the largest number of spoken languages?
+
+The bar chart displays the top 10 African countries with the highest number of native speakers as Nigeria, Somalia, Djibouti, Morocco, Tanzania, Algeria, Chad, Mauritania, Kenya, and Sudan.
+```{r}
+africa %>% group_by(country) %>% summarise(total_native_speakers = sum(native_speakers)) %>% arrange(desc(total_native_speakers))  %>% slice_max(order_by = total_native_speakers,n=10)%>% ggplot(.,aes(x=country, y=total_native_speakers)) + geom_bar(stat = "identity") +   labs(
+    title = "Top 10 African countries with highest number of native speakers",
+    x = "Country",
+    y = "Native Speakers"
+  ) + scale_y_continuous(labels = scales::comma)
+
+
+```
+
+
+
+
+
+Are there any languages that cut across multiple countries?
+
+The bar chart below shows the distribution of 502 African languages across 51 countries. 
+
+The highest number of languages spoken in a single African country is 347 followed by 104 languages spoken in two countries, with 12 African countries sustaining populations that speak a single language.
+
+```{r}
+frequency_countries_language_spoken <- africa %>% group_by(language) %>% 
+  summarise(languages_by_country = n_distinct(country)) 
+
+
+frequency_countries_language_spoken %>% count(languages_by_country) %>% ggplot(aes(x = factor(languages_by_country), y = n)) + geom_col(fill = "steelblue") + labs( x = "Number of Countries", y = "Number of languages", title = "Distribution of 502 African Languages Across 51 Countries" )  + geom_text(aes(label = n), vjust = -0.3, size = 3) + theme_minimal()
+
+
+```
+### Additional dataset that contains spatial data and Economic Indicators for African countries
+
+I bring an additional data set into the mix that contains spatial data for African countries in the form of polygons, Human Development Index, GDP per Capita, and population growth. 
+
+I call this data "african_countries_II". I intend to merge this information with the Africa data that contains information about languages, the number of native speakers of each language, and the country. 
+
+In the code chunk below, I convert the spatial data into an sf object and transform the projection based on ESRI standards
+
+I use the textbook Geocomputation with R: Solutions in order to enable this: https://r.geocompx.org/solutions/index.html
+
+```{r}
+african_countries_II <- world %>%
+  filter(continent == "Africa", !is.na(iso_a2)) %>% 
+  left_join(worldbank_df, by = "iso_a2") %>%
+  select(name, subregion, gdpPercap, HDI, pop_growth) %>%
+  st_transform("ESRI:102022") %>%
+  st_make_valid() %>%
+  st_collection_extract("POLYGON")
+
+african_countries_II <- african_countries_II %>% rename(country = name)
+```
+
+In order to join the two data sets based on countries, I clean the country names in both data sets to match each other. Whitespaces, special characters, articles such as "the" and "of" are removed.
+
+### Merge Africa languages dataset with Africa Spatial and Economic Indicators dataset
+
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+african_countries_II$country_names_edited <- african_countries_II$country %>% str_to_lower() %>% gsub(" ", "",.) %>% gsub("the", "",.)%>% gsub("of", "",.) %>% gsub("democratic", "",.) %>% gsub("republic", "", .) %>% gsub("'","",.) %>% gsub("-","",.) 
+
+african_countries_II <- african_countries_II %>% arrange(country_names_edited)
+
+africa$country_names_edited <- africa$country %>% str_to_lower() %>% gsub(" ", "",.) %>% gsub("the", "",.)%>% gsub("of", "",.) %>% gsub("democratic", "",.) %>% gsub("republic", "", .) %>% gsub("'","",.) %>% gsub("-","",.) 
+africa <- africa %>% arrange(country_names_edited)
+
+african_countries_II <- african_countries_II %>% inner_join(africa,by="country_names_edited")
+
+
+```
+
+### Missing Values Check per column
+
+The code chunk below checks the number of NA's in each column of the data frame named "african_countries_II"
+
+```{r}
+for (col_index in (1:length(african_countries_II))){
+  print(sum(is.na(african_countries_II[,col_index])))
+}
+
+```
+
+### Impute Missing values for HDI and Population Growth based on average HDI and population growth over 5 year period between 2011 and 2015.
+
+Impute HDI value for South Sudan
+Impute population growth values for Eritrea
+```{r}
+african_countries_II$HDI[is.na(african_countries_II$HDI)] <- 0.433
+african_countries_II$pop_growth[is.na(african_countries_II$pop_growth)] <- 1.35
+african_countries_II$gdpPercap[is.na(african_countries_II$gdpPercap)] <- 3800
+african_countries_II$family[african_countries_II$country_names_edited == "ethiopia"] <- "Nilo-Saharan"
+
+```
+
+
+```{r}
+for (col_index in (1:length(african_countries_II))){
+  print(sum(is.na(african_countries_II[,col_index])))
+}
+
+```
+
+
+
+
+### Family of Languages Choropleth Map
+```{r}
+
+ggplot() + geom_sf(data = african_countries_II , aes(fill = family))+ labs(title="Family of Languages spoken by Country") +theme(axis.title.x=element_blank(),axis.title.y=element_blank()) +geom_sf_text(data = african_countries_II, aes(label = country_names_edited),size=2,family="sans",nudge_x = 300000,nudge_y = 300000)
+
+```
+
+```{r,message=FALSE}
+ggplot() + geom_sf(data = african_countries_II , aes(fill = HDI))+ scale_fill_viridis_c(option = "C")+labs(title="HDI Per Country") +theme(axis.title.x=element_blank(),axis.title.y=element_blank()) +geom_sf_text(data = african_countries_II, aes(label = country_names_edited),size=2,family="sans",color="white",nudge_x = 300000,nudge_y = 300000 )
+
+
+```
+
+### Scatter Plot of Economic Indicators by African Country and native speakers
+
+```{r fig.width=12, fig.height=8}
+ggplot(african_countries_II, aes(x = log10(gdpPercap), y = HDI,color=country_names_edited)) + geom_point(aes(size = log10(native_speakers)),alpha=0.4) + scale_size(name = "Log of Native Speakers",breaks=waiver()) +scale_colour_viridis_d(name="African Countries",option = "C")+labs(title= "African Countries: GDP Per Capita plotted against HDI",x = "Log GDP Per Capita",y = "Human Development Index")+ theme( legend.position = "right", legend.box = "horizontal" )
+
+
+```
+
+
+
+
+
