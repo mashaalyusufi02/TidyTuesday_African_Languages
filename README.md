@@ -1,6 +1,6 @@
 ## Acknowledgements
 
-This R project was developed from data provided from the TidyTuesday repository. Tidy Tuesday was begun by the R for Data Science community to enable individuals to download social data about a particular social subject, explore, visualise, and extend it. *The Languages of Africa* is the dataset used by me in this project, expanded upon, and linked here: [The Languages of Africa]([data/2026/2026-01-13/readme.md](https://github.com/rfordatascience/tidytuesday/blob/main/data/2026/2026-01-13/readme.md))
+This R project was developed from data provided from the TidyTuesday repository. Tidy Tuesday was begun by the R for Data Science community to enable individuals to download social data about a particular social subject, explore, visualise, and extend it. *The Languages of Africa* is the dataset used by me in this project, expanded upon, and linked here: [The Languages of Africa](https://github.com/rfordatascience/tidytuesday/blob/main/data/2026/2026-01-13/readme.md)
 
 **Citation** Data Science Learning Community (2024). *Tidy Tuesday: A weekly social data project.* https://tidytues.day
 
